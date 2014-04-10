@@ -109,7 +109,7 @@ namespace Taskmatics.TestComponents
             if (request.ContentType.IndexOf("xml") < -1)
                 return XElement.Load(request.InputStream);
 
-            if (request.ContentType.IndexOf("json") < -1)
+            if (request.ContentType.IndexOf("json") < -1) 
                 return JToken.Load(new JsonTextReader(new StreamReader(request.InputStream)));
 
             throw new InvalidOperationException("Unrecognized content type.");
