@@ -1,11 +1,15 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Taskmatics.Scheduler.Core;
 
 namespace Taskmatics.TestComponents
@@ -17,8 +21,8 @@ namespace Taskmatics.TestComponents
             var parameters = new HttpEndpointTriggerInputParameters();
             parameters.Url = "http://+:5000/test";
 
-            var harness = new TriggerHarness<HttpEndpointTrigger>(parameters);
-            harness.TriggerFired += (s, e) => Console.WriteLine((e.OutputParameters as HttpEndpointTriggerOutputParameters).Message);
+            var harness = new TriggerHarness<GitHubPushWebhookTrigger>(parameters);
+            harness.TriggerFired += (s, e) => Console.WriteLine((e.OutputParameters as GitHubPushWebhookTriggerOutputParameters).RepoUrl);
 
             Console.ReadLine();
         }
@@ -30,6 +34,7 @@ namespace Taskmatics.TestComponents
     {
         private readonly TaskCompletionSource<object> _cancellation;
         private readonly HttpListener _httpListener;
+        protected readonly Task CompletedTask;
 
         public HttpEndpointTrigger()
         {
@@ -40,6 +45,8 @@ namespace Taskmatics.TestComponents
             _httpListener = new HttpListener();
             _httpListener.Prefixes.Add(parameters.Url.TrimEnd('/') + '/');
             _httpListener.Start();
+
+            CompletedTask = Task.FromResult<object>(null);
 
             HandleRequestsAsync();
         }
@@ -58,9 +65,9 @@ namespace Taskmatics.TestComponents
                     HandleRequestAsync(context);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                OnHandleError(ex, isTerminal: true);
             }
             finally
             {
@@ -70,21 +77,47 @@ namespace Taskmatics.TestComponents
 
         private void HandleRequestAsync(HttpListenerContext context)
         {
-            Task.Run(async () => 
+            Task.Run(async () =>
             {
                 try
                 {
-                    var content = await new StreamReader(context.Request.InputStream).ReadToEndAsync();
-
-                    context.Response.Close();
-
-                    OnFired(new HttpEndpointTriggerOutputParameters { Message = content });
+                    await ProcessRequestAsync(context);
                 }
-                catch
+                catch (Exception ex)
                 {
-
+                    OnHandleError(ex);
                 }
             });
+        }
+
+        protected async virtual Task ProcessRequestAsync(HttpListenerContext context)
+        {
+            var content = GetContent(context.Request);
+            await SendResponseAsync(content, context);
+            context.Response.Close();
+            OnFired(new HttpEndpointTriggerOutputParameters { Content = content });
+            Trace.WriteLine(content);
+        }
+
+        protected virtual Task SendResponseAsync(object requestContent, HttpListenerContext context)
+        {
+            return CompletedTask;
+        }
+
+        protected virtual object GetContent(HttpListenerRequest request)
+        {
+            if (request.ContentType.IndexOf("xml") < -1)
+                return XElement.Load(request.InputStream);
+
+            if (request.ContentType.IndexOf("json") < -1)
+                return JToken.Load(new JsonTextReader(new StreamReader(request.InputStream)));
+
+            throw new InvalidOperationException("Unrecognized content type.");
+        }
+
+        protected virtual void OnHandleError(Exception ex, bool isTerminal = false)
+        {
+            Trace.WriteLine(ex.ToString());
         }
 
         public override void Dispose()
@@ -101,6 +134,23 @@ namespace Taskmatics.TestComponents
 
     public class HttpEndpointTriggerOutputParameters
     {
-        public string Message { get; set; }
+        public object Content { get; set; }
+    }
+
+    [OutputParameters(typeof(GitHubPushWebhookTriggerOutputParameters))]
+    public class GitHubPushWebhookTrigger : HttpEndpointTrigger
+    {
+        protected override Task ProcessRequestAsync(HttpListenerContext context)
+        {
+            var content = (dynamic)GetContent(context.Request);
+            OnFired(new GitHubPushWebhookTriggerOutputParameters { RepoUrl = content.repository.url });
+
+            return CompletedTask;
+        }
+    }
+
+    public class GitHubPushWebhookTriggerOutputParameters
+    {
+        public string RepoUrl { get; set; }
     }
 }
