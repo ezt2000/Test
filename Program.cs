@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using LibGit2Sharp;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -18,11 +19,29 @@ namespace Taskmatics.TestComponents
     {
         static void Main(string[] args)
         {
-            var parameters = new HttpEndpointTriggerInputParameters();
-            parameters.Url = "http://+:5000/test";
+            var path = @"c:\users\easy\desktop\testrepo";
 
-            var harness = new TriggerHarness<GitHubPushWebhookTrigger>(parameters);
-            harness.TriggerFired += (s, e) => Console.WriteLine((e.OutputParameters as GitHubPushWebhookTriggerOutputParameters).RepoUrl);
+            //Directory.CreateDirectory(path);
+
+            if (!Repository.IsValid(path))
+                Repository.Init(path);
+
+            var repo = new Repository(path);
+            if (repo.Network.Remotes["origin"] == null)
+                repo.Network.Remotes.Add("origin", "https://github.com/ezt2000/Test");
+
+            repo.Network.Fetch(repo.Network.Remotes["origin"]/*, new FetchOptions
+            {
+                Credentials = new Credentials { Username = "ezt2000", Password = "Password.1" }
+            }*/);
+
+            repo.Merge(repo.Commits.First(), null);
+
+            //var parameters = new HttpEndpointTriggerInputParameters();
+            //parameters.Url = "http://+:5000/test";
+
+            //var harness = new TriggerHarness<GitHubPushWebhookTrigger>(parameters);
+            //harness.TriggerFired += (s, e) => Console.WriteLine((e.OutputParameters as GitHubPushWebhookTriggerOutputParameters).RepoUrl);
 
             Console.ReadLine();
         }
@@ -106,10 +125,10 @@ namespace Taskmatics.TestComponents
 
         protected virtual object GetContent(HttpListenerRequest request)
         {
-            if (request.ContentType.IndexOf("xml") < -1)
+            if (request.ContentType.IndexOf("xml") > -1)
                 return XElement.Load(request.InputStream);
 
-            if (request.ContentType.IndexOf("json") < -1) 
+            if (request.ContentType.IndexOf("json") > -1) 
                 return JToken.Load(new JsonTextReader(new StreamReader(request.InputStream)));
 
             throw new InvalidOperationException("Unrecognized content type.");
@@ -143,6 +162,7 @@ namespace Taskmatics.TestComponents
         protected override Task ProcessRequestAsync(HttpListenerContext context)
         {
             var content = (dynamic)GetContent(context.Request);
+            context.Response.Close();
             OnFired(new GitHubPushWebhookTriggerOutputParameters { RepoUrl = content.repository.url });
 
             return CompletedTask;
@@ -153,4 +173,21 @@ namespace Taskmatics.TestComponents
     {
         public string RepoUrl { get; set; }
     }
+
+    public class PullRepoTask : TaskBase
+    {
+        private readonly string _repoUrl;
+
+        public PullRepoTask()
+        {
+            var output = (GitHubPushWebhookTriggerOutputParameters)Context.TriggerInfo.OutputParameters;
+            _repoUrl = output.RepoUrl;
+        }
+
+        protected override void Execute()
+        {
+
+        }
+    }
+
 }
