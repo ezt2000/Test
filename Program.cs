@@ -20,22 +20,12 @@ namespace Taskmatics.TestComponents
         static void Main(string[] args)
         {
             var path = @"c:\users\easy\desktop\testrepo";
+            var parameters = new GitPullTaskInputParameters();
+            parameters.WorkingDirectoryPath = path;
+            parameters.RepositoryUrl = "https://github.com/ezt2000/Test";
 
-            //Directory.CreateDirectory(path);
-
-            if (!Repository.IsValid(path))
-                Repository.Init(path);
-
-            var repo = new Repository(path);
-            if (repo.Network.Remotes["origin"] == null)
-                repo.Network.Remotes.Add("origin", "https://github.com/ezt2000/Test");
-
-            repo.Network.Fetch(repo.Network.Remotes["origin"]/*, new FetchOptions
-            {
-                Credentials = new Credentials { Username = "ezt2000", Password = "Password.1" }
-            }*/);
-
-            repo.Merge(repo.Commits.First(), null);
+            var harness = new TaskHarness<GitPullTask>(parameters);
+            harness.Execute();
 
             //var parameters = new HttpEndpointTriggerInputParameters();
             //parameters.Url = "http://+:5000/test";
@@ -128,7 +118,7 @@ namespace Taskmatics.TestComponents
             if (request.ContentType.IndexOf("xml") > -1)
                 return XElement.Load(request.InputStream);
 
-            if (request.ContentType.IndexOf("json") > -1) 
+            if (request.ContentType.IndexOf("json") > -1)
                 return JToken.Load(new JsonTextReader(new StreamReader(request.InputStream)));
 
             throw new InvalidOperationException("Unrecognized content type.");
@@ -163,7 +153,7 @@ namespace Taskmatics.TestComponents
         {
             var content = (dynamic)GetContent(context.Request);
             context.Response.Close();
-            OnFired(new GitHubPushWebhookTriggerOutputParameters { RepoUrl = content.repository.url });
+            OnFired(new GitHubPushWebhookTriggerOutputParameters { RepositoryUrl = content.repository.url });
 
             return CompletedTask;
         }
@@ -171,23 +161,81 @@ namespace Taskmatics.TestComponents
 
     public class GitHubPushWebhookTriggerOutputParameters
     {
-        public string RepoUrl { get; set; }
+        public string RepositoryUrl { get; set; }
     }
 
-    public class PullRepoTask : TaskBase
+    public class GitPullTask : TaskBase
     {
-        private readonly string _repoUrl;
+        private readonly string _workingDirectoryPath;
+        private readonly string _repositoryUrl;
 
-        public PullRepoTask()
+        public GitPullTask()
         {
-            var output = (GitHubPushWebhookTriggerOutputParameters)Context.TriggerInfo.OutputParameters;
-            _repoUrl = output.RepoUrl;
+            var parameters = (GitPullTaskInputParameters)Context.Parameters;
+
+            _workingDirectoryPath = parameters.WorkingDirectoryPath;
+            if (!String.IsNullOrEmpty(parameters.RepositoryUrl))
+                _repositoryUrl = parameters.RepositoryUrl;
+            else
+            {
+                var triggerOutputParameters = (GitHubPushWebhookTriggerOutputParameters)Context.TriggerInfo.OutputParameters;
+                _repositoryUrl = triggerOutputParameters.RepositoryUrl;
+            }
         }
 
         protected override void Execute()
         {
+            if (!Directory.Exists(_workingDirectoryPath))
+                Directory.CreateDirectory(_workingDirectoryPath);
 
+            if (!Repository.IsValid(_workingDirectoryPath))
+                Repository.Clone(
+                    _repositoryUrl,
+                    _workingDirectoryPath,
+                    onCheckoutProgress: ReportCheckoutProgress,
+                    onTransferProgress: HandleTransferProgress);
+
+            var repository = new Repository(_workingDirectoryPath);
+            var remote = repository.Network.Remotes.FirstOrDefault(r =>
+                String.Equals(
+                r.Url.TrimEnd('/'),
+                _repositoryUrl.TrimEnd('/'),
+                StringComparison.InvariantCultureIgnoreCase));
+
+            if (remote == null)
+                throw new InvalidOperationException("Remote with URL '" + _repositoryUrl + "' does not exist in the repo within '" + _workingDirectoryPath + "'.");
+
+            repository.Fetch(
+                remote.Name, 
+                new FetchOptions 
+                {
+                    OnProgress = ReportProgress,
+                    OnTransferProgress = HandleTransferProgress 
+                });
+        }
+
+        private void ReportCheckoutProgress(string path, int completed, int total)
+        {
+            Context.Logger.Log("{0} of {1}: {2}", completed, total, path);
+        }
+
+        private bool ReportProgress(string message)
+        {
+            Context.Logger.Log(message);
+            return true;
+        }
+
+        private bool HandleTransferProgress(TransferProgress progress)
+        {
+            return true;
         }
     }
 
+    public class GitPullTaskInputParameters
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        public string WorkingDirectoryPath { get; set; }
+
+        public string RepositoryUrl { get; set; }
+    }
 }
