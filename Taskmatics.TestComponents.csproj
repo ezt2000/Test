@@ -21,6 +21,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -51,6 +52,22 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CommandLine\CommandLineTask.cs" />
+    <Compile Include="CommandLine\CommandLineTaskInputParameters.cs" />
+    <Compile Include="Git\GitHubPushWebhookTrigger.cs" />
+    <Compile Include="Git\GitHubPushWebhookTriggerOutputParameters.cs" />
+    <Compile Include="Git\GitPullTask.cs" />
+    <Compile Include="Git\GitPullTaskInputParameters.cs" />
+    <Compile Include="Http\HttpEndpointTrigger.cs" />
+    <Compile Include="Http\HttpEndpointTriggerInputParameters.cs" />
+    <Compile Include="Http\HttpEndpointTriggerOutputParameters.cs" />
+    <Compile Include="MsBuild\MsBuildTask.cs" />
+    <Compile Include="MsBuild\MsBuildTaskInputParameters.cs" />
+    <Compile Include="Nodejs\NodeScriptTask.cs" />
+    <Compile Include="Nodejs\NodeScriptTaskInputParameters.cs" />
+    <Compile Include="Powershell\PowershellScriptTask.cs" />
+    <Compile Include="Powershell\PowershellScriptTaskInputParameters.cs" />
+    <Compile Include="ProcessExecution\ExecuteProcessTask.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
@@ -58,6 +75,7 @@
     <None Include="App.config" />
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <PostBuildEvent>
